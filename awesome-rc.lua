@@ -75,7 +75,7 @@ if beautiful.wallpaper then
    for s = 1, screen.count() do
       if (s == 1) then
          gears.wallpaper.maximized("/home/adrake/incursion-25.jpg", s, true)
-      else
+      elseif (s == 2) then
          gears.wallpaper.maximized("/home/adrake/warp-angels-25.jpg", s, true)
       end
    end
@@ -113,6 +113,80 @@ menubar.utils.terminal = terminal -- Set the terminal for applications that requ
 -- {{{ Wibox
 -- Create a textclock widget
 mytextclock = awful.widget.textclock()
+
+-- Create a battery widget
+function adapter_exists(adapter)
+    local fd = io.open("/sys/class/power_supply/" .. adapter)
+    if fd ~= nil then
+        fd:close()
+        return true
+    end
+    return false
+end
+function batteryInfo(text_widget, bar_widget, adapter)
+    spacer = " "
+    local fcur = io.open("/sys/class/power_supply/"..adapter.."/energy_now")
+    local fcap = io.open("/sys/class/power_supply/"..adapter.."/energy_full")
+    local fsta = io.open("/sys/class/power_supply/"..adapter.."/status")
+    local cur = fcur:read()
+    local cap = fcap:read()
+    local sta = fsta:read()
+    local battery = math.floor(cur * 100 / cap)
+    bar_widget:set_value(battery / 100)
+    if battery < 10 then
+        bar_widget:set_color("#ff0000")
+    elseif battery < 50 then
+        bar_widget:set_color("#ffff00")
+    elseif battery < 99 then
+        bar_widget:set_color("#00ff00")
+    else
+        bar_widget:set_color("#0000ff")
+    end
+    if sta:match("Charging") then
+        dir = "^"
+        battery = "A/C ("..battery..")"
+    elseif sta:match("Discharging") then
+        dir = "v"
+        if tonumber(battery) > 25 and tonumber(battery) < 75 then
+            battery = battery
+        elseif tonumber(battery) < 25 then
+            if tonumber(battery) < 10 then
+                naughty.notify({ title      = "Battery Warning"
+                                 , text       = "Battery low!"..spacer..battery.."%"..spacer.."left!"
+                                 , timeout    = 5
+                                 , position   = "top_right"
+                                 , fg         = beautiful.fg_focus
+                                 , bg         = beautiful.bg_focus
+                               })
+            end
+            battery = battery
+        else
+            battery = battery
+        end
+    else
+        dir = "="
+        battery = "A/C"
+    end
+    text_widget:set_markup(spacer.."Bat:"..spacer..dir..battery..dir..spacer)
+    fcur:close()
+    fcap:close()
+    fsta:close()
+end
+
+battery_adapter = "BAT0"
+if adapter_exists(battery_adapter) then
+    battery_widget = wibox.widget.textbox()
+    battery_widget:set_align("right")
+    battery_bar = awful.widget.progressbar()
+    battery_bar:set_width(16)
+    battery_bar:set_vertical(true)
+    battery_timer = timer({timeout = 20})
+    battery_timer:connect_signal("timeout", function()
+        batteryInfo(battery_widget, battery_bar, battery_adapter)
+    end)
+    battery_timer:start()
+    batteryInfo(battery_widget, battery_bar, battery_adapter)
+end
 
 -- Create a wibox for each screen and add it
 mywibox = {}
@@ -193,6 +267,10 @@ for s = 1, screen.count() do
     -- Widgets that are aligned to the right
     local right_layout = wibox.layout.fixed.horizontal()
     if s == 1 then right_layout:add(wibox.widget.systray()) end
+    if battery_widget ~= nil then
+        right_layout:add(battery_widget)
+        right_layout:add(battery_bar)
+    end
     right_layout:add(mytextclock)
     right_layout:add(mylayoutbox[s])
 
@@ -371,7 +449,7 @@ awful.rules.rules = {
       properties = { floating = true } },
     { rule = { class = "gimp" },
       properties = { floating = true } },
-    { rule = { class = "Google-chrome", name = "Authy" },
+    { rule = { instance = "crx_gaedmjdfmmahhbjefcbgaolhhanlaolb" },  -- Authy
       properties = { floating = true } },
     -- Set Firefox to always map on tags number 2 of screen 1.
     -- { rule = { class = "Firefox" },
